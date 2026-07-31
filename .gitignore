@@ -1,0 +1,33 @@
+# ===== Maven / Java =====
+target/
+**/target/
+*.class
+*.jar
+*.war
+*.ear
+*.log
+*.tmp
+
+# ===== IDE =====
+.idea/
+*.iml
+.vscode/
+.settings/
+.classpath
+.project
+.factorypath
+*.prefs
+
+# ===== OS =====
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ===== Environment / Secrets =====
+.env
+.env.*
+!.env.example
+
+# ===== Node (future frontend) =====
+node_modules/
+dist/
