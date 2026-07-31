@@ -22,13 +22,12 @@ import lombok.Setter;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
-import java.util.List;    /**
-     * Platform user. The password is stored in plain text for now;
-     * BCrypt hashing arrives on Day 3 with Spring Security.
-     *
-     * TODO (Day 3): switch password storage to BCrypt. The column is already
-     * VARCHAR(255), which accommodates the 60-char BCrypt hash.
-     */
+import java.util.List;
+
+/**
+ * Platform user. The password is stored as a BCrypt hash (60 chars) in the
+ * VARCHAR(255) column, so plain-text credentials never touch the database.
+ */
 @Entity
 @Table(name = "users",
         uniqueConstraints = {

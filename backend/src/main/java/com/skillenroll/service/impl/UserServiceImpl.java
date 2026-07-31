@@ -8,6 +8,7 @@ import com.skillenroll.exception.ResourceNotFoundException;
 import com.skillenroll.mapper.UserMapper;
 import com.skillenroll.repository.UserRepository;
 import com.skillenroll.service.interfaces.UserService;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -22,9 +23,11 @@ import java.util.List;
 public class UserServiceImpl implements UserService {
 
     private final UserRepository userRepository;
+    private final PasswordEncoder passwordEncoder;
 
-    public UserServiceImpl(UserRepository userRepository) {
+    public UserServiceImpl(UserRepository userRepository, PasswordEncoder passwordEncoder) {
         this.userRepository = userRepository;
+        this.passwordEncoder = passwordEncoder;
     }
 
     @Override
@@ -40,6 +43,7 @@ public class UserServiceImpl implements UserService {
             throw new DuplicateResourceException("User with phone number '" + request.getPhoneNumber() + "' already exists");
         }
         User user = UserMapper.toEntity(request);
+        user.setPassword(passwordEncoder.encode(request.getPassword()));
         return UserMapper.toResponse(userRepository.save(user));
     }
 
@@ -66,6 +70,9 @@ public class UserServiceImpl implements UserService {
             throw new DuplicateResourceException("User with phone number '" + request.getPhoneNumber() + "' already exists");
         }
         UserMapper.updateEntity(user, request);
+        if (request.getPassword() != null && !request.getPassword().isBlank()) {
+            user.setPassword(passwordEncoder.encode(request.getPassword()));
+        }
         userRepository.flush(); // trigger @PreUpdate so updatedAt is fresh
         return UserMapper.toResponse(user);
     }

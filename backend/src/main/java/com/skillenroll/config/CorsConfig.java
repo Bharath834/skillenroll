@@ -6,8 +6,8 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 /**
  * CORS configuration for development. The React SPA (Vite dev server on
- * port 5173) must be allowed to call the backend. Day 3 will restrict this
- * further alongside Spring Security.
+ * port 5173) must be allowed to call the backend. Spring Security's
+ * {@code cors(withDefaults())} picks this up through the MVC handler mapping.
  */
 @Configuration
 public class CorsConfig implements WebMvcConfigurer {

@@ -6,9 +6,9 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 /**
  * SkillEnroll - Spring Boot entry point.
  *
- * <p>Day 2 scope: backend foundation (entities, repositories, services,
- * REST controllers, exception handling). Authentication, JWT, OAuth2 and
- * Spring Security arrive on Day 3.
+ * <p>Day 3 scope: stateless JWT authentication &amp; authorization via
+ * Spring Security (public {@code /api/auth/**}, protected everywhere else).
+ * OAuth2 remains a future enhancement.
  */
 @SpringBootApplication
 public class SkillEnrollApplication {

@@ -2,7 +2,8 @@ package com.skillenroll.enums;
 
 /**
  * User roles in the SkillEnroll platform.
- * Role-based authorization will be enforced on Day 3 (Spring Security).
+ * Exposed to Spring Security as {@code ROLE_<name>} authorities, enabling
+ * {@code @PreAuthorize("hasRole('ADMIN')")}-style checks.
  */
 public enum Role {
     ADMIN,

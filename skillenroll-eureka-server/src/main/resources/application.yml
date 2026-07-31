@@ -1,0 +1,23 @@
+server:
+  port: ${SERVER_PORT:8761}
+
+spring:
+  application:
+    name: skillenroll-eureka-server
+
+eureka:
+  instance:
+    hostname: localhost
+  client:
+    # Standalone mode: this server does not register with itself.
+    register-with-eureka: false
+    fetch-registry: false
+  server:
+    # Dev convenience: instances deregister immediately when they go down.
+    enable-self-preservation: false
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info

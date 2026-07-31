@@ -21,7 +21,22 @@ spring:
 server:
   port: ${SERVER_PORT:8080}
 
+# --- Service Discovery (Eureka) ---
+eureka:
+  client:
+    register-with-eureka: true
+    fetch-registry: true
+    service-url:
+      defaultZone: http://localhost:8761/eureka/
+
 logging:
   level:
     org.hibernate.SQL: debug
     org.hibernate.orm.jdbc.bind: trace
+
+# --- JWT configuration (Day 3) ---
+# secret is a Base64-encoded 384-bit HMAC-SHA key; override in production via JWT_SECRET.
+app:
+  jwt:
+    secret: '${JWT_SECRET:Naxi60zfyJogjfLK/iRaMX0qPP0qhOUuU3xHnUpjoqGeVxPsAsWadrefaVEFYfuC}'
+    expiration-ms: '${JWT_EXPIRATION_MS:86400000}'
