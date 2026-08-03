@@ -12,6 +12,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
@@ -65,6 +66,10 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             request.setAttribute(JWT_ERROR_ATTRIBUTE, "JWT token has expired");
         } catch (JwtException | IllegalArgumentException ex) {
             request.setAttribute(JWT_ERROR_ATTRIBUTE, "Invalid JWT token");
+        } catch (UsernameNotFoundException ex) {
+            // Valid token but the account no longer exists (deleted/renamed).
+            // Must not propagate - that would surface as an HTTP 500.
+            request.setAttribute(JWT_ERROR_ATTRIBUTE, "User account no longer exists");
         }
 
         filterChain.doFilter(request, response);
