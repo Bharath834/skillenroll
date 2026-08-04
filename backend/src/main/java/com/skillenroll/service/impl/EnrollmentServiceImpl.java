@@ -15,7 +15,6 @@ import com.skillenroll.service.interfaces.EnrollmentService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDateTime;
 import java.util.List;
 
 /**
@@ -50,8 +49,8 @@ public class EnrollmentServiceImpl implements EnrollmentService {
             throw new DuplicateResourceException("User is already enrolled in this course");
         }
 
+        // enrollmentDate defaults to now via @PrePersist on Enrollment.
         Enrollment enrollment = EnrollmentMapper.toEntity(request, user, course);
-        enrollment.setEnrollmentDate(LocalDateTime.now());
         return EnrollmentMapper.toResponse(enrollmentRepository.save(enrollment));
     }
 

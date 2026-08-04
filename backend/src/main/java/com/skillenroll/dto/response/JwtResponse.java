@@ -8,9 +8,9 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 /**
- * Successful authentication payload: JWT access token, token type,
- * lifetime in seconds and the authenticated user's profile (incl. role).
- * The password is never part of any response DTO.
+ * Successful authentication payload: JWT access token, opaque refresh token,
+ * token type, lifetime in seconds and the authenticated user's profile
+ * (incl. role). The password is never part of any response DTO.
  */
 @Getter
 @Setter
@@ -20,6 +20,8 @@ import lombok.Setter;
 public class JwtResponse {
 
     private String token;
+
+    private String refreshToken;
 
     private String tokenType;
 

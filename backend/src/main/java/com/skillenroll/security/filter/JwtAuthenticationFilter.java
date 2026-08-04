@@ -2,6 +2,7 @@ package com.skillenroll.security.filter;
 
 import com.skillenroll.security.jwt.JwtService;
 import com.skillenroll.security.service.CustomUserDetailsService;
+import com.skillenroll.service.interfaces.BlacklistedTokenService;
 import io.jsonwebtoken.ExpiredJwtException;
 import io.jsonwebtoken.JwtException;
 import jakarta.servlet.FilterChain;
@@ -20,12 +21,20 @@ import org.springframework.web.filter.OncePerRequestFilter;
 import java.io.IOException;
 
 /**
- * Reads the {@code Authorization: Bearer <token>} header, validates the JWT
- * and, when valid, installs the authentication in the {@code SecurityContext}.
+ * Reads the {@code Authorization: Bearer <token>} header, rejects blacklisted
+ * tokens, validates the JWT and, when valid, installs the authentication in
+ * the {@code SecurityContext}.
  *
- * <p>Invalid/expired tokens never abort the chain here; they are recorded on
- * the request so {@link com.skillenroll.security.config.JwtAuthenticationEntryPoint}
- * can return a precise 401 message when the protected endpoint is reached.
+ * <p>Invalid/expired/blacklisted tokens never abort the chain here; they are
+ * recorded on the request so
+ * {@link com.skillenroll.security.config.JwtAuthenticationEntryPoint} can
+ * return a precise 401 message when the protected endpoint is reached. The raw
+ * token is stored as the {@code Authentication} credentials so logout can
+ * blacklist it.
+ *
+ * <p>Note: the blacklist lookup is a small DB query per authenticated request
+ * (hash + existence check); acceptable for this scope, and the lookup is only
+ * reached for well-formed tokens because it runs after claim extraction.
  */
 @Component
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
@@ -34,10 +43,14 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtService jwtService;
     private final CustomUserDetailsService userDetailsService;
+    private final BlacklistedTokenService blacklistedTokenService;
 
-    public JwtAuthenticationFilter(JwtService jwtService, CustomUserDetailsService userDetailsService) {
+    public JwtAuthenticationFilter(JwtService jwtService,
+                                   CustomUserDetailsService userDetailsService,
+                                   BlacklistedTokenService blacklistedTokenService) {
         this.jwtService = jwtService;
         this.userDetailsService = userDetailsService;
+        this.blacklistedTokenService = blacklistedTokenService;
     }
 
     @Override
@@ -54,12 +67,16 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         try {
             String email = jwtService.extractUsername(token);
             if (email != null && SecurityContextHolder.getContext().getAuthentication() == null) {
-                UserDetails userDetails = userDetailsService.loadUserByUsername(email);
-                if (jwtService.isTokenValid(token, userDetails)) {
-                    UsernamePasswordAuthenticationToken authentication =
-                            new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities());
-                    authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
-                    SecurityContextHolder.getContext().setAuthentication(authentication);
+                if (blacklistedTokenService.isBlacklisted(token)) {
+                    request.setAttribute(JWT_ERROR_ATTRIBUTE, "JWT token has been revoked");
+                } else {
+                    UserDetails userDetails = userDetailsService.loadUserByUsername(email);
+                    if (jwtService.isTokenValid(token, userDetails)) {
+                        UsernamePasswordAuthenticationToken authentication =
+                                new UsernamePasswordAuthenticationToken(userDetails, token, userDetails.getAuthorities());
+                        authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+                        SecurityContextHolder.getContext().setAuthentication(authentication);
+                    }
                 }
             }
         } catch (ExpiredJwtException ex) {

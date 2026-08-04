@@ -1,11 +1,12 @@
 package com.skillenroll.security.jwt;
 
+import com.skillenroll.entity.User;
 import com.skillenroll.security.config.JwtProperties;
+import com.skillenroll.security.service.CustomUserDetails;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.io.Decoders;
 import io.jsonwebtoken.security.Keys;
-import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Service;
 
@@ -14,11 +15,12 @@ import java.time.Instant;
 import java.util.Date;
 
 /**
- * Generates, parses and validates JWT access tokens (HS256).
+ * Generates, parses and validates JWT access tokens (HS384).
  *
  * <p>Stateless by design: no server-side session is involved. The token
- * carries the subject (email) and the user's role claim, and is signed
- * with a shared HMAC-SHA secret.
+ * carries the subject (email) plus the user's {@code userId}, {@code firstName},
+ * {@code lastName} and {@code role} claims, and is signed with a shared
+ * HMAC-SHA secret.
  */
 @Service
 public class JwtService {
@@ -32,19 +34,24 @@ public class JwtService {
     }
 
     /**
-     * Builds a signed JWT for the given user details.
+     * Builds a signed JWT for the given authenticated user.
+     *
+     * <p>The subject stays the user's email (login identifier).
+     * {@code userId}, {@code firstName}, {@code lastName} and {@code role}
+     * are embedded as additional claims for stateless profile access.
      *
      * @param userDetails the authenticated user
      * @return a compact JWT string
      */
-    public String generateToken(UserDetails userDetails) {
+    public String generateToken(CustomUserDetails userDetails) {
+        User user = userDetails.getUser();
         Instant now = Instant.now();
         return Jwts.builder()
-                .subject(userDetails.getUsername())
-                .claim("role", userDetails.getAuthorities().stream()
-                        .map(GrantedAuthority::getAuthority)
-                        .findFirst()
-                        .orElse(null))
+                .subject(user.getEmail())
+                .claim("userId", user.getId())
+                .claim("firstName", user.getFirstName())
+                .claim("lastName", user.getLastName())
+                .claim("role", user.getRole().name())
                 .issuedAt(Date.from(now))
                 .expiration(Date.from(now.plusMillis(expirationMs)))
                 .signWith(signingKey)
@@ -67,6 +74,17 @@ public class JwtService {
     public boolean isTokenValid(String token, UserDetails userDetails) {
         final String username = extractUsername(token);
         return username.equals(userDetails.getUsername()) && !isTokenExpired(token);
+    }
+
+    /**
+     * Extracts the token's expiry ({@code exp}) claim. Used when blacklisting
+     * a token so the blacklist entry carries the same lifetime as the JWT.
+     *
+     * @param token the compact JWT
+     * @return the expiration date
+     */
+    public Date extractExpiration(String token) {
+        return extractAllClaims(token).getExpiration();
     }
 
     public long getExpirationMs() {

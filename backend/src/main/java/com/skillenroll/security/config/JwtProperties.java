@@ -9,7 +9,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *
  * <p>{@code secret} must be a Base64-encoded key of at least 256 bits
  * (the value in {@code application.yml} is a 384-bit key). {@code expirationMs}
- * controls the access-token lifetime.
+ * controls the access-token lifetime and {@code refreshExpirationMs} controls
+ * the refresh-token lifetime.
  */
 @Getter
 @Setter
@@ -19,4 +20,6 @@ public class JwtProperties {
     private String secret;
 
     private long expirationMs;
+
+    private long refreshExpirationMs;
 }

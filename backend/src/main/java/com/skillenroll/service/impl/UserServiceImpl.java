@@ -7,6 +7,7 @@ import com.skillenroll.exception.DuplicateResourceException;
 import com.skillenroll.exception.ResourceNotFoundException;
 import com.skillenroll.mapper.UserMapper;
 import com.skillenroll.repository.UserRepository;
+import com.skillenroll.security.service.SecurityUtils;
 import com.skillenroll.service.interfaces.UserService;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -45,6 +46,11 @@ public class UserServiceImpl implements UserService {
         User user = UserMapper.toEntity(request);
         user.setPassword(passwordEncoder.encode(request.getPassword()));
         return UserMapper.toResponse(userRepository.save(user));
+    }
+
+    @Override
+    public UserResponse getCurrentUser() {
+        return UserMapper.toResponse(SecurityUtils.currentUser().getUser());
     }
 
     @Override

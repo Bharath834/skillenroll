@@ -1,8 +1,8 @@
 {
   "info": {
     "_postman_id": "6f3a1c8e-2d4b-4a9f-b7e2-0a1b2c3d4e5f",
-    "name": "SkillEnroll - Auth (Day 2)",
-    "description": "Verification suite for the SkillEnroll authentication module.\n\nBase URL: {{baseUrl}} (default http://localhost:8080).\n\nAfter a successful Register or Login, the returned JWT is stored in the collection variable {{token}} (set via the Test scripts), so the 'Protected endpoint' request can be executed directly.",
+    "name": "SkillEnroll - Auth + User Profile (Day 3 Complete)",
+    "description": "Complete verification suite for the SkillEnroll authentication module (Day 3: JWT claims, /api/users/me, refresh tokens, logout + JWT blacklist, Swagger UI).\n\nBase URL: {{baseUrl}} (default http://localhost:8080).\n\nAfter a successful Register or Login, the returned JWT and refresh token are stored in the collection variables {{token}} and {{refreshToken}} (set via the Test scripts), so the protected, refresh and logout requests can be executed directly.\n\nThe Test scripts also decode the JWT payload and verify the Day 3 claims: sub (email), userId, firstName, lastName and role.\n\nRun order: 1 → 2 → 3 … → 12 → 13 (old access token rejected after logout) → 14 (reuse of the logged-out refresh token).",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -15,11 +15,16 @@
       "key": "token",
       "value": "",
       "type": "string"
+    },
+    {
+      "key": "refreshToken",
+      "value": "",
+      "type": "string"
     }
   ],
   "item": [
     {
-      "name": "1. Register User (expect 201)",
+      "name": "1. Register User (expect 201 + JWT claims)",
       "event": [
         {
           "listen": "test",
@@ -34,6 +39,16 @@
               "    pm.expect(body.data.token).to.be.a('string');",
               "    pm.expect(body.data.user.role).to.eql('STUDENT');",
               "    pm.collectionVariables.set('token', body.data.token);",
+              "    pm.collectionVariables.set('refreshToken', body.data.refreshToken);",
+              "});",
+              "pm.test('JWT payload carries Day 3 claims with email as subject', function () {",
+              "    const token = pm.collectionVariables.get('token');",
+              "    const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));",
+              "    pm.expect(payload.sub).to.eql('alice.wonder@example.com');",
+              "    pm.expect(payload.userId).to.be.a('number');",
+              "    pm.expect(payload.firstName).to.eql('Alice');",
+              "    pm.expect(payload.lastName).to.eql('Wonder');",
+              "    pm.expect(payload.role).to.eql('STUDENT');",
               "});"
             ],
             "type": "text/javascript"
@@ -60,7 +75,7 @@
       }
     },
     {
-      "name": "2. Login (expect 200)",
+      "name": "2. Login (expect 200 + JWT claims)",
       "event": [
         {
           "listen": "test",
@@ -74,6 +89,16 @@
               "    pm.expect(body.success).to.eql(true);",
               "    pm.expect(body.data.token).to.be.a('string');",
               "    pm.collectionVariables.set('token', body.data.token);",
+              "    pm.collectionVariables.set('refreshToken', body.data.refreshToken);",
+              "});",
+              "pm.test('JWT payload carries Day 3 claims with email as subject', function () {",
+              "    const token = pm.collectionVariables.get('token');",
+              "    const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));",
+              "    pm.expect(payload.sub).to.eql('alice.wonder@example.com');",
+              "    pm.expect(payload.userId).to.be.a('number');",
+              "    pm.expect(payload.firstName).to.eql('Alice');",
+              "    pm.expect(payload.lastName).to.eql('Wonder');",
+              "    pm.expect(payload.role).to.eql('STUDENT');",
               "});"
             ],
             "type": "text/javascript"
@@ -311,6 +336,234 @@
           "raw": "{{baseUrl}}/api/users",
           "host": ["{{baseUrl}}"],
           "path": ["api", "users"]
+        }
+      }
+    },
+    {
+      "name": "9. Get Current User /api/users/me (expect 200)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status is 200 OK', function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "pm.test('Profile matches the authenticated user', function () {",
+              "    const body = pm.response.json();",
+              "    pm.expect(body.success).to.eql(true);",
+              "    pm.expect(body.data.id).to.be.a('number');",
+              "    pm.expect(body.data.email).to.eql('alice.wonder@example.com');",
+              "    pm.expect(body.data.firstName).to.eql('Alice');",
+              "    pm.expect(body.data.lastName).to.eql('Wonder');",
+              "    pm.expect(body.data.role).to.eql('STUDENT');",
+              "    pm.expect(body.data.password).to.not.exist;",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/users/me",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "users", "me"]
+        }
+      }
+    },
+    {
+      "name": "10. Get Current User without Token (expect 401)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status is 401 Unauthorized', function () {",
+              "    pm.response.to.have.status(401);",
+              "});",
+              "pm.test('Body has success=false', function () {",
+              "    const body = pm.response.json();",
+              "    pm.expect(body.success).to.eql(false);",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/users/me",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "users", "me"]
+        }
+      }
+    },
+    {
+      "name": "11. Refresh Token (expect 200 + rotation)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status is 200 OK', function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "pm.test('A fresh token pair is returned and stored', function () {",
+              "    const body = pm.response.json();",
+              "    pm.expect(body.success).to.eql(true);",
+              "    pm.expect(body.data.token).to.be.a('string');",
+              "    pm.expect(body.data.refreshToken).to.be.a('string');",
+              "    pm.collectionVariables.set('token', body.data.token);",
+              "    pm.collectionVariables.set('refreshToken', body.data.refreshToken);",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/auth/refresh",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "auth", "refresh"]
+        }
+      }
+    },
+    {
+      "name": "12. Logout (expect 200)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status is 200 OK', function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "pm.test('Logout message returned', function () {",
+              "    const body = pm.response.json();",
+              "    pm.expect(body.success).to.eql(true);",
+              "    pm.expect(body.message).to.eql('Logged out successfully');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/auth/logout",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "auth", "logout"]
+        }
+      }
+    },
+    {
+      "name": "13. Old Access Token after Logout (expect 401 - blacklisted)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status is 401 Unauthorized', function () {",
+              "    pm.response.to.have.status(401);",
+              "});",
+              "pm.test('Token was rejected as revoked', function () {",
+              "    const body = pm.response.json();",
+              "    pm.expect(body.success).to.eql(false);",
+              "    pm.expect(body.message).to.include('revoked');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/users/me",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "users", "me"]
+        }
+      }
+    },
+    {
+      "name": "14. Refresh with Revoked Token after Logout (expect 409 reuse)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status is 409 Conflict', function () {",
+              "    pm.response.to.have.status(409);",
+              "});",
+              "pm.test('Reuse detection message returned', function () {",
+              "    const body = pm.response.json();",
+              "    pm.expect(body.success).to.eql(false);",
+              "    pm.expect(body.message).to.include('reuse detected');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/auth/refresh",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "auth", "refresh"]
         }
       }
     }

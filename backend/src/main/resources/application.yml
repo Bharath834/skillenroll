@@ -41,3 +41,5 @@ app:
   jwt:
     secret: '${JWT_SECRET:Naxi60zfyJogjfLK/iRaMX0qPP0qhOUuU3xHnUpjoqGeVxPsAsWadrefaVEFYfuC}'
     expiration-ms: '${JWT_EXPIRATION_MS:86400000}'
+    # Refresh token lifetime (default 7 days).
+    refresh-expiration-ms: '${JWT_REFRESH_EXPIRATION_MS:604800000}'

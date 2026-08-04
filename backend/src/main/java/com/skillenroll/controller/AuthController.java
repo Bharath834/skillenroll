@@ -1,6 +1,8 @@
 package com.skillenroll.controller;
 
 import com.skillenroll.dto.request.LoginRequest;
+import com.skillenroll.dto.request.LogoutRequest;
+import com.skillenroll.dto.request.RefreshTokenRequest;
 import com.skillenroll.dto.request.RegisterRequest;
 import com.skillenroll.dto.response.JwtResponse;
 import com.skillenroll.service.interfaces.AuthService;
@@ -38,5 +40,23 @@ public class AuthController {
     public ResponseEntity<ApiResponse<JwtResponse>> login(@Valid @RequestBody LoginRequest request) {
         JwtResponse response = authService.login(request);
         return ResponseEntity.ok(ApiResponse.success("Login successful", response));
+    }
+
+    /**
+     * Exchanges a valid refresh token for a fresh token pair (rotation).
+     */
+    @PostMapping("/refresh")
+    public ResponseEntity<ApiResponse<JwtResponse>> refresh(@Valid @RequestBody RefreshTokenRequest request) {
+        JwtResponse response = authService.refresh(request);
+        return ResponseEntity.ok(ApiResponse.success("Token refreshed successfully", response));
+    }
+
+    /**
+     * Revokes the presented refresh token. Requires a valid access token.
+     */
+    @PostMapping("/logout")
+    public ResponseEntity<ApiResponse<Void>> logout(@Valid @RequestBody LogoutRequest request) {
+        authService.logout(request);
+        return ResponseEntity.ok(ApiResponse.success("Logged out successfully"));
     }
 }
