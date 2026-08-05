@@ -1,0 +1,74 @@
+server:
+  port: ${SERVER_PORT:8081}
+
+spring:
+  application:
+    name: skillenroll-api-gateway
+
+  cloud:
+    gateway:
+
+      routes:
+        # Authentication APIs
+        - id: skillenroll-auth-route
+          uri: lb://skillenroll-backend
+          predicates:
+            - Path=/api/auth/**
+
+        # User APIs
+        - id: skillenroll-users-route
+          uri: lb://skillenroll-backend
+          predicates:
+            - Path=/api/users/**
+
+      forwarded:
+        enabled: true
+
+      globalcors:
+        cors-configurations:
+          '[/**]':
+            allowedOrigins:
+              - http://localhost:5173
+              - http://localhost:3000
+            allowedMethods:
+              - GET
+              - POST
+              - PUT
+              - DELETE
+              - OPTIONS
+            allowedHeaders:
+              - "*"
+            allowCredentials: true
+            maxAge: 3600
+
+      default-filters:
+        - RemoveRequestHeader=Origin
+
+      httpclient:
+        connect-timeout: 5000
+        response-timeout: 10s
+
+eureka:
+  client:
+    register-with-eureka: true
+    fetch-registry: true
+    service-url:
+      defaultZone: ${EUREKA_SERVER_URL:http://localhost:8761/eureka/}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,gateway,mappings
+  endpoint:
+    gateway:
+      access: unrestricted
+    health:
+      show-details: always
+
+logging:
+  level:
+    com.skillenroll.apigateway: INFO
+    org.springframework.cloud.gateway: INFO
+    org.springframework.cloud.gateway.handler.RoutePredicateHandlerMapping: DEBUG
+    org.springframework.cloud.gateway.filter.RouteToRequestUrlFilter: DEBUG
