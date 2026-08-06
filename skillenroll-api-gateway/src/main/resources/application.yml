@@ -21,6 +21,12 @@ spring:
           predicates:
             - Path=/api/users/**
 
+        # Course APIs
+        - id: skillenroll-courses-route
+          uri: lb://skillenroll-course-service
+          predicates:
+            - Path=/api/courses/**
+
       forwarded:
         enabled: true
 
