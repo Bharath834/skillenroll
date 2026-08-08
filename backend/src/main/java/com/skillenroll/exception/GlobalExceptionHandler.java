@@ -1,10 +1,12 @@
 package com.skillenroll.exception;
 
 import com.skillenroll.util.ApiResponse;
+import jakarta.validation.ConstraintViolation;
 import jakarta.validation.ConstraintViolationException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.mapping.PropertyReferenceException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -13,7 +15,9 @@ import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.validation.FieldError;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
@@ -25,6 +29,10 @@ import java.util.Map;
 /**
  * Centralized exception handling. Every exception is translated into a
  * clean {@link ApiResponse} with an appropriate HTTP status code.
+ *
+ * <p>Client errors (4xx) are logged at WARN without stack traces (and never
+ * leak credentials or tokens), while unexpected server errors (5xx) are
+ * logged at ERROR with the full stack.
  */
 @RestControllerAdvice
 public class GlobalExceptionHandler {
@@ -33,11 +41,13 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(ResourceNotFoundException.class)
     public ResponseEntity<ApiResponse<Void>> handleResourceNotFound(ResourceNotFoundException ex) {
+        log.warn("Resource not found: {}", ex.getMessage());
         return build(HttpStatus.NOT_FOUND, ex.getMessage());
     }
 
     @ExceptionHandler(DuplicateResourceException.class)
     public ResponseEntity<ApiResponse<Void>> handleDuplicateResource(DuplicateResourceException ex) {
+        log.warn("Duplicate resource: {}", ex.getMessage());
         return build(HttpStatus.CONFLICT, ex.getMessage());
     }
 
@@ -61,6 +71,7 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<ApiResponse<Void>> handleIllegalArgument(IllegalArgumentException ex) {
+        log.warn("Invalid argument: {}", ex.getMessage());
         return build(HttpStatus.BAD_REQUEST, ex.getMessage());
     }
 
@@ -97,33 +108,70 @@ public class GlobalExceptionHandler {
         }
         ApiResponse<Map<String, String>> body = ApiResponse.error("Validation failed");
         body.setData(errors);
+        log.warn("Validation failed for request: {}", errors);
         return ResponseEntity.badRequest().body(body);
     }
 
     @ExceptionHandler(ConstraintViolationException.class)
-    public ResponseEntity<ApiResponse<Void>> handleConstraintViolation(ConstraintViolationException ex) {
-        return build(HttpStatus.BAD_REQUEST, "Validation failed: " + ex.getMessage());
+    public ResponseEntity<ApiResponse<Map<String, String>>> handleConstraintViolation(ConstraintViolationException ex) {
+        Map<String, String> errors = new LinkedHashMap<>();
+        for (ConstraintViolation<?> violation : ex.getConstraintViolations()) {
+            String property = violation.getPropertyPath().toString();
+            // Strip the method name prefix (e.g. "getAllCourses.size") so only
+            // the parameter name is reported to the client.
+            String field = property.contains(".")
+                    ? property.substring(property.lastIndexOf('.') + 1)
+                    : property;
+            errors.putIfAbsent(field, violation.getMessage());
+        }
+        ApiResponse<Map<String, String>> body = ApiResponse.error("Validation failed");
+        body.setData(errors);
+        log.warn("Constraint validation failed: {}", errors);
+        return ResponseEntity.badRequest().body(body);
+    }
+
+    @ExceptionHandler(MissingServletRequestParameterException.class)
+    public ResponseEntity<ApiResponse<Void>> handleMissingParameter(MissingServletRequestParameterException ex) {
+        String message = "Required request parameter '" + ex.getParameterName() + "' is missing";
+        log.warn(message);
+        return build(HttpStatus.BAD_REQUEST, message);
     }
 
     @ExceptionHandler(HttpMessageNotReadableException.class)
     public ResponseEntity<ApiResponse<Void>> handleUnreadable(HttpMessageNotReadableException ex) {
+        log.warn("Malformed request body: {}", ex.getMostSpecificCause().getMessage());
         return build(HttpStatus.BAD_REQUEST, "Malformed request body");
     }
 
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
     public ResponseEntity<ApiResponse<Void>> handleTypeMismatch(MethodArgumentTypeMismatchException ex) {
+        log.warn("Type mismatch for parameter '{}': {}", ex.getName(), ex.getValue());
         return build(HttpStatus.BAD_REQUEST,
                 "Invalid value for parameter '" + ex.getName() + "': " + ex.getValue());
     }
 
+    @ExceptionHandler(PropertyReferenceException.class)
+    public ResponseEntity<ApiResponse<Void>> handlePropertyReference(PropertyReferenceException ex) {
+        log.warn("Invalid sort property '{}'", ex.getPropertyName());
+        return build(HttpStatus.BAD_REQUEST,
+                "Invalid sort field '" + ex.getPropertyName() + "'");
+    }
+
+    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity<ApiResponse<Void>> handleMethodNotSupported(HttpRequestMethodNotSupportedException ex) {
+        log.warn("Method not supported: {}", ex.getMessage());
+        return build(HttpStatus.METHOD_NOT_ALLOWED, "HTTP method not supported for this endpoint");
+    }
+
     @ExceptionHandler(NoResourceFoundException.class)
     public ResponseEntity<ApiResponse<Void>> handleNoResource(NoResourceFoundException ex) {
+        log.warn("Resource not found: {}", ex.getResourcePath());
         return build(HttpStatus.NOT_FOUND, "Resource not found");
     }
 
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ResponseEntity<ApiResponse<Void>> handleDataIntegrityViolation(DataIntegrityViolationException ex) {
-        log.warn("Data integrity violation: {}", ex.getMessage());
+        log.warn("Data integrity violation: {}", ex.getMostSpecificCause().getMessage());
         return build(HttpStatus.CONFLICT, "Operation would violate a data constraint");
     }
 

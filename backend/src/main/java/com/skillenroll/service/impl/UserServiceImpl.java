@@ -9,6 +9,8 @@ import com.skillenroll.mapper.UserMapper;
 import com.skillenroll.repository.UserRepository;
 import com.skillenroll.security.service.SecurityUtils;
 import com.skillenroll.service.interfaces.UserService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -22,6 +24,8 @@ import java.util.List;
 @Service
 @Transactional(readOnly = true)
 public class UserServiceImpl implements UserService {
+
+    private static final Logger log = LoggerFactory.getLogger(UserServiceImpl.class);
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
@@ -45,7 +49,10 @@ public class UserServiceImpl implements UserService {
         }
         User user = UserMapper.toEntity(request);
         user.setPassword(passwordEncoder.encode(request.getPassword()));
-        return UserMapper.toResponse(userRepository.save(user));
+        User saved = userRepository.save(user);
+        // Log only identifiers - never the password.
+        log.info("User created with id {} and role {}", saved.getId(), saved.getRole());
+        return UserMapper.toResponse(saved);
     }
 
     @Override
@@ -80,6 +87,8 @@ public class UserServiceImpl implements UserService {
             user.setPassword(passwordEncoder.encode(request.getPassword()));
         }
         userRepository.flush(); // trigger @PreUpdate so updatedAt is fresh
+        // Log only identifiers - never the password.
+        log.info("User updated with id {}", id);
         return UserMapper.toResponse(user);
     }
 
@@ -87,6 +96,7 @@ public class UserServiceImpl implements UserService {
     @Transactional
     public void deleteUser(Long id) {
         userRepository.delete(findUserOrThrow(id));
+        log.info("User deleted with id {}", id);
     }
 
     private User findUserOrThrow(Long id) {
