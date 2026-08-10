@@ -1,0 +1,114 @@
+.course-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+  padding: 1.4rem;
+}
+
+.course-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.course-card-title {
+  margin-bottom: 0;
+  font-size: 1.15rem;
+}
+
+.course-card-title a {
+  color: var(--color-text);
+  transition: color var(--transition-fast);
+}
+
+.course-card-title a:hover {
+  color: var(--color-primary);
+}
+
+.course-card-desc {
+  margin-bottom: 0;
+  color: var(--color-text-muted);
+  font-size: 0.92rem;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.course-card-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  flex-wrap: wrap;
+  margin-top: auto;
+  padding-top: 0.2rem;
+}
+
+.course-card-meta-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.83rem;
+  color: var(--color-text-muted);
+}
+
+.course-card-meta-item svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.course-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid var(--color-border);
+}
+
+.course-card-price {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.course-card-price.is-free {
+  color: var(--color-success);
+  font-size: 0.95rem;
+}
+
+.course-card-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--color-primary);
+  transition: gap var(--transition-fast), color var(--transition-fast);
+}
+
+.course-card-link svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: transform var(--transition-fast);
+}
+
+.course-card:hover .course-card-link {
+  gap: 0.5rem;
+}
+
+.course-card:hover .course-card-link svg {
+  transform: translateX(2px);
+}
