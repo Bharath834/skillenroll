@@ -40,12 +40,15 @@ src/
 ├── services/          # Centralized API client + endpoint paths
 ├── context/           # React context providers (populated with auth, Day 8+)
 ├── hooks/             # Custom hooks (useDocumentTitle, ...)
-├── utils/             # Constants, formatters, sample data
+├── utils/             # Constants, formatters, error messages
 ├── assets/            # Static assets (logo.svg)
 ├── App.jsx            # Route definitions
 └── main.jsx           # Entry point
 ```
 
-> Status: authentication (login / register / logout via the existing JWT API) is
-> implemented. Catalog, enrollment, and progress pages still render UI shells
-> with sample data — live API integration lands in later phases.
+> Status: authentication (login / register / logout via the existing JWT API),
+> the live course catalog (browse, server-side title search, category filter,
+> course details with curriculum, and one-click enrollment), the My Enrollments
+> list, and the Progress dashboard are all implemented against the real
+> backend. Course/lesson/enrollment/progress endpoints require a signed-in
+> session (backend SecurityConfig), so anonymous visitors see sign-in prompts.

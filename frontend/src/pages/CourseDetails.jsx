@@ -1,44 +1,197 @@
-import { useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { Link, useLocation, useParams } from 'react-router-dom';
 import Badge from '../components/common/Badge.jsx';
 import Button from '../components/common/Button.jsx';
 import Alert from '../components/common/Alert.jsx';
 import EmptyState from '../components/common/EmptyState.jsx';
 import useDocumentTitle from '../hooks/useDocumentTitle.js';
-import { ROUTES, SKILL_LEVEL_LABELS } from '../utils/constants.js';
+import { useAuth } from '../context/AuthContext.jsx';
+import { courseApi } from '../services/courseService.js';
+import { ROUTES } from '../utils/constants.js';
 import { formatDuration, formatMinutes, formatPrice, pluralize } from '../utils/formatters.js';
-import { getSampleCourse } from '../utils/sampleData.js';
+import { getApiErrorMessage } from '../utils/errors.js';
 import './CourseDetails.css';
 
-const LEVEL_VARIANT = {
-  BEGINNER: 'success',
-  INTERMEDIATE: 'warning',
-  ADVANCED: 'danger',
-};
+const LOCK_ICON = (
+  <svg viewBox="0 0 24 24" aria-hidden="true">
+    <rect x="5" y="11" width="14" height="9" rx="2" />
+    <path d="M8 11V8a4 4 0 0 1 8 0v3" />
+  </svg>
+);
+
+const SEARCH_ICON = (
+  <svg viewBox="0 0 24 24" aria-hidden="true">
+    <circle cx="11" cy="11" r="7" />
+    <path d="m21 21-4.35-4.35" />
+  </svg>
+);
+
+const ERROR_ICON = (
+  <svg viewBox="0 0 24 24" aria-hidden="true">
+    <circle cx="12" cy="12" r="9" />
+    <path d="M12 8v5" />
+    <path d="M12 16.5h.01" />
+  </svg>
+);
 
 /**
- * Course detail placeholder.
- * Renders a single sample course by :id with curriculum and an enrollment
- * CTA. Live catalog + enrollment integration replaces this in later phases.
+ * Course details. Fetches the real course (GET /api/courses/{id}) and its
+ * curriculum (GET /api/lessons/course/{courseId}) and lets an authenticated
+ * learner enroll (POST /api/enrollments). All of these endpoints require a
+ * valid JWT, so anonymous visitors see a sign-in prompt.
  */
 export default function CourseDetails() {
   const { id } = useParams();
-  const course = getSampleCourse(id);
-  const [enrollNotice, setEnrollNotice] = useState(false);
+  const { isAuthenticated, user } = useAuth();
+  const location = useLocation();
 
-  useDocumentTitle(course ? course.title : 'Course not found');
+  const [reloadKey, setReloadKey] = useState(0);
 
-  if (!course) {
+  const [course, setCourse] = useState(null);
+  const [courseError, setCourseError] = useState(null);
+  const [courseLoading, setCourseLoading] = useState(false);
+
+  const [lessons, setLessons] = useState(null); // null until loaded
+  const [lessonsLoading, setLessonsLoading] = useState(false);
+  const [lessonsError, setLessonsError] = useState(null);
+
+  const [enrolled, setEnrolled] = useState(false);
+  const [enrollState, setEnrollState] = useState('idle'); // idle | submitting | success | error
+  const [enrollMessage, setEnrollMessage] = useState('');
+
+  useDocumentTitle(course ? course.title : courseError ? 'Course not available' : 'Course');
+
+  // Load the course (and reset dependent state) whenever the id, the auth
+  // state, or the reload key changes.
+  useEffect(() => {
+    if (!isAuthenticated) {
+      setCourse(null);
+      setCourseError(null);
+      setCourseLoading(false);
+      setLessons(null);
+      setLessonsLoading(false);
+      setLessonsError(null);
+      setEnrolled(false);
+      setEnrollState('idle');
+      setEnrollMessage('');
+      return undefined;
+    }
+
+    let cancelled = false;
+    setCourseLoading(true);
+    setCourseError(null);
+    setCourse(null);
+    setLessons(null);
+    setLessonsError(null);
+    setEnrolled(false);
+    setEnrollState('idle');
+    setEnrollMessage('');
+
+    courseApi
+      .getCourseById(id)
+      .then((data) => {
+        if (cancelled) return;
+        setCourse(data);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setCourseError(err);
+      })
+      .finally(() => {
+        if (!cancelled) setCourseLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [id, isAuthenticated, reloadKey]);
+
+  // Fetch the curriculum once the course is loaded.
+  useEffect(() => {
+    if (!course) return undefined;
+
+    let cancelled = false;
+    setLessonsLoading(true);
+    setLessonsError(null);
+    courseApi
+      .getLessonsByCourse(course.id)
+      .then((page) => {
+        if (cancelled) return;
+        setLessons(Array.isArray(page?.content) ? page.content : []);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setLessonsError(err);
+      })
+      .finally(() => {
+        if (!cancelled) setLessonsLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [course]);
+
+  // Pre-check whether the current user is already enrolled (non-blocking:
+  // the Enroll action surfaces a 409 if this check is unavailable).
+  useEffect(() => {
+    if (!course || !user) return undefined;
+
+    let cancelled = false;
+    courseApi
+      .getEnrollmentsForUserAndCourse(user.id, course.id)
+      .then((page) => {
+        if (cancelled) return;
+        if (Array.isArray(page?.content) && page.content.length > 0) setEnrolled(true);
+      })
+      .catch(() => {
+        // Ignored — the enroll action handles the already-enrolled case.
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [course, user]);
+
+  const handleEnroll = async () => {
+    if (!user || !course || enrollState === 'submitting') return;
+
+    setEnrollState('submitting');
+    setEnrollMessage('');
+    try {
+      await courseApi.enroll({ userId: user.id, courseId: course.id });
+      setEnrolled(true);
+      setEnrollState('success');
+      setEnrollMessage('You are enrolled. Start learning whenever you are ready.');
+    } catch (err) {
+      if (err.status === 409) {
+        setEnrolled(true);
+        setEnrollState('success');
+        setEnrollMessage('You are already enrolled in this course.');
+      } else {
+        setEnrollState('error');
+        setEnrollMessage(
+          getApiErrorMessage(err, 'We could not complete the enrollment. Please try again.')
+        );
+      }
+    }
+  };
+
+  if (!isAuthenticated) {
     return (
       <section className="section-sm">
         <div className="container">
           <div className="card">
             <EmptyState
-              title="Course not found"
-              description={`We couldn't find a course with id “${id}”. It may have been removed, or the catalog API isn't connected yet.`}
+              icon={LOCK_ICON}
+              title="Sign in to view course details"
+              description="The catalog requires a signed-in account. Log in to browse courses and enroll."
             >
-              <Button to={ROUTES.courses} variant="outline">
-                Back to courses
+              <Button to={ROUTES.login} state={{ from: location }}>
+                Log in
+              </Button>
+              <Button to={ROUTES.register} variant="outline">
+                Create account
               </Button>
             </EmptyState>
           </div>
@@ -47,10 +200,53 @@ export default function CourseDetails() {
     );
   }
 
-  const levelLabel = SKILL_LEVEL_LABELS[course.skillLevel] || course.skillLevel;
-  const totalLessons = course.syllabus.reduce((sum, module) => sum + module.lessons, 0);
+  if (courseLoading) {
+    return (
+      <section className="section-sm">
+        <div className="container">
+          <div className="card">
+            <div className="page-loading" role="status">
+              <span className="spinner spinner-dark" aria-hidden="true" />
+              Loading course…
+            </div>
+          </div>
+        </div>
+      </section>
+    );
+  }
 
-  const handleEnroll = () => setEnrollNotice(true);
+  if (courseError) {
+    const isNotFound = courseError.status === 404;
+    return (
+      <section className="section-sm">
+        <div className="container">
+          <div className="card">
+            <EmptyState
+              role="alert"
+              icon={isNotFound ? SEARCH_ICON : ERROR_ICON}
+              title={isNotFound ? 'Course not found' : "Couldn't load this course"}
+              description={
+                isNotFound
+                  ? `We couldn't find a course with id “${id}”. It may have been removed.`
+                  : getApiErrorMessage(courseError)
+              }
+            >
+              <Button to={ROUTES.courses} variant="outline">
+                Back to courses
+              </Button>
+              {!isNotFound ? (
+                <Button onClick={() => setReloadKey((key) => key + 1)}>Try again</Button>
+              ) : null}
+            </EmptyState>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  if (!course) return null;
+
+  const lessonCount = Array.isArray(lessons) ? lessons.length : null;
 
   return (
     <>
@@ -70,12 +266,8 @@ export default function CourseDetails() {
             <div className="course-detail-head">
               <div className="course-detail-badges">
                 <Badge variant="primary">{course.category}</Badge>
-                <Badge variant={LEVEL_VARIANT[course.skillLevel] || 'neutral'}>
-                  {levelLabel}
-                </Badge>
               </div>
               <h1>{course.title}</h1>
-              <p className="course-detail-desc">{course.description}</p>
 
               <div className="course-detail-meta">
                 <span className="course-detail-meta-item">
@@ -91,51 +283,58 @@ export default function CourseDetails() {
                   </svg>
                   {formatDuration(course.duration)}
                 </span>
-                <span className="course-detail-meta-item">
-                  <svg viewBox="0 0 24 24" aria-hidden="true">
-                    <path d="M4 5h16v14H4z" />
-                    <path d="M8 9h8M8 13h5" />
-                  </svg>
-                  {pluralize(totalLessons, 'lesson')}
-                </span>
-                <span className="course-detail-meta-item">
-                  <svg viewBox="0 0 24 24" aria-hidden="true">
-                    <path d="M12 3l1.9 3.9 4.3.6-3.1 3 0.7 4.3L12 13l-3.8 2 .7-4.3-3.1-3 4.3-.6z" />
-                  </svg>
-                  {course.rating} rating
-                </span>
+                {lessonCount !== null ? (
+                  <span className="course-detail-meta-item">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M4 5h16v14H4z" />
+                      <path d="M8 9h8M8 13h5" />
+                    </svg>
+                    {pluralize(lessonCount, 'lesson')}
+                  </span>
+                ) : null}
               </div>
             </div>
 
             <div className="course-detail-body">
               <h2>About this course</h2>
               <p>
-                {course.description} You&apos;ll learn through structured modules,
-                hands-on exercises, and practical projects that build real,
-                portfolio-ready skills.
+                {course.description ||
+                  'No description has been provided for this course yet.'}
               </p>
 
               <h2>Course curriculum</h2>
-              <ol className="course-curriculum">
-                {course.syllabus.map((module, index) => (
-                  <li key={module.title} className="course-module">
-                    <div className="course-module-info">
-                      <span className="course-module-index">
-                        {String(index + 1).padStart(2, '0')}
-                      </span>
-                      <div>
-                        <h3>{module.title}</h3>
-                        <span className="course-module-lessons">
-                          {pluralize(module.lessons, 'lesson')}
+              {lessonsLoading ? (
+                <p className="course-detail-curriculum-note">Loading curriculum…</p>
+              ) : lessonsError ? (
+                <p className="course-detail-curriculum-note">
+                  The curriculum could not be loaded right now.
+                </p>
+              ) : Array.isArray(lessons) && lessons.length > 0 ? (
+                <ol className="course-curriculum">
+                  {lessons.map((lesson) => (
+                    <li key={lesson.id} className="course-lesson">
+                      <div className="course-lesson-info">
+                        <span className="course-lesson-index">
+                          {String(lesson.lessonOrder ?? '—').padStart(2, '0')}
                         </span>
+                        <div>
+                          <h3>{lesson.title}</h3>
+                          {lesson.description ? (
+                            <p className="course-lesson-desc">{lesson.description}</p>
+                          ) : null}
+                        </div>
                       </div>
-                    </div>
-                    <span className="course-module-duration">
-                      {formatMinutes(module.lessons * 45)}
-                    </span>
-                  </li>
-                ))}
-              </ol>
+                      <span className="course-lesson-duration">
+                        {formatMinutes(lesson.durationMinutes)}
+                      </span>
+                    </li>
+                  ))}
+                </ol>
+              ) : (
+                <p className="course-detail-curriculum-note">
+                  No lessons have been added to this course yet.
+                </p>
+              )}
             </div>
           </div>
         </div>
@@ -149,12 +348,34 @@ export default function CourseDetails() {
               </span>
             </div>
 
-            <Button block size="lg" onClick={handleEnroll}>
-              Enroll now
+            <Button
+              block
+              size="lg"
+              onClick={handleEnroll}
+              disabled={enrolled || enrollState === 'submitting'}
+            >
+              {enrolled
+                ? 'Enrolled'
+                : enrollState === 'submitting'
+                  ? 'Enrolling…'
+                  : 'Enroll now'}
             </Button>
             <p className="course-detail-card-note">
-              No payment required to browse. Enroll in one click and start learning immediately.
+              {enrolled
+                ? 'You are enrolled in this course.'
+                : 'Enroll in one click and start learning immediately.'}
             </p>
+
+            {enrollState === 'success' ? (
+              <Alert variant="success" className="course-detail-alert">
+                {enrollMessage}
+              </Alert>
+            ) : null}
+            {enrollState === 'error' ? (
+              <Alert variant="danger" className="course-detail-alert">
+                {enrollMessage}
+              </Alert>
+            ) : null}
 
             <ul className="course-detail-facts">
               <li>
@@ -166,29 +387,16 @@ export default function CourseDetails() {
                 <strong>{course.category}</strong>
               </li>
               <li>
-                <span>Skill level</span>
-                <strong>{levelLabel}</strong>
-              </li>
-              <li>
                 <span>Duration</span>
                 <strong>{formatDuration(course.duration)}</strong>
               </li>
-              <li>
-                <span>Lessons</span>
-                <strong>{pluralize(totalLessons, 'lesson')}</strong>
-              </li>
+              {lessonCount !== null ? (
+                <li>
+                  <span>Lessons</span>
+                  <strong>{pluralize(lessonCount, 'lesson')}</strong>
+                </li>
+              ) : null}
             </ul>
-
-            {enrollNotice ? (
-              <Alert variant="info" className="course-detail-alert">
-                Enrollment is not connected yet — the enroll flow (POST{' '}
-                <code>/api/enrollments</code>) arrives in a later phase.
-              </Alert>
-            ) : null}
-
-            <Badge variant="outline" className="course-detail-sample-badge">
-              Sample course — API integration coming soon
-            </Badge>
           </div>
         </aside>
       </section>

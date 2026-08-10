@@ -1,9 +1,11 @@
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import Button from '../components/common/Button.jsx';
 import CourseCard from '../components/common/CourseCard.jsx';
 import useDocumentTitle from '../hooks/useDocumentTitle.js';
+import { useAuth } from '../context/AuthContext.jsx';
+import { courseApi } from '../services/courseService.js';
 import { ROUTES } from '../utils/constants.js';
-import { SAMPLE_COURSES } from '../utils/sampleData.js';
 import './Home.css';
 
 const STATS = [
@@ -50,13 +52,49 @@ const FEATURES = [
 ];
 
 const STEPS = [
-  { number: '01', title: 'Create your account', text: 'Sign up as a student or instructor in under a minute.' },
-  { number: '02', title: 'Pick a program', text: 'Filter by category and skill level to find the right fit.' },
+  { number: '01', title: 'Create your account', text: 'Sign up as a student in under a minute.' },
+  { number: '02', title: 'Pick a program', text: 'Filter by category to find the right fit.' },
   { number: '03', title: 'Learn & track progress', text: 'Follow lessons and monitor your completion in real time.' },
 ];
 
 export default function Home() {
   useDocumentTitle('Learn. Enroll. Grow.');
+  const { isAuthenticated } = useAuth();
+
+  const [featured, setFeatured] = useState([]);
+  const [featuredLoading, setFeaturedLoading] = useState(false);
+  const [featuredError, setFeaturedError] = useState(false);
+  const [featuredKey, setFeaturedKey] = useState(0);
+
+  // Featured programs come from the live catalog. The backend requires a
+  // signed-in session, so anonymous visitors get a sign-in CTA instead.
+  useEffect(() => {
+    if (!isAuthenticated) {
+      setFeaturedLoading(false);
+      return undefined;
+    }
+
+    let cancelled = false;
+    setFeaturedLoading(true);
+    setFeaturedError(false);
+    courseApi
+      .getCourses()
+      .then((data) => {
+        if (cancelled) return;
+        setFeatured(Array.isArray(data) ? data : []);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setFeaturedError(true);
+      })
+      .finally(() => {
+        if (!cancelled) setFeaturedLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated, featuredKey]);
 
   return (
     <>
@@ -111,26 +149,65 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Featured courses (sample data until catalog integration) */}
+      {/* Featured courses (live catalog data) */}
       <section className="section home-featured">
         <div className="container">
           <div className="home-section-head">
             <span className="home-kicker">Featured programs</span>
             <h2>Popular right now</h2>
-            <p className="home-section-note">
-              Sample catalog shown until the course API is integrated.
+            {isAuthenticated ? (
+              <p className="home-section-note">Fresh from the catalog — pick your next skill.</p>
+            ) : null}
+          </div>
+
+          {!isAuthenticated ? (
+            <div className="card home-featured-cta">
+              <div>
+                <h3>Sign in to explore the catalog</h3>
+                <p>Browse live programs, view course details, and enroll with a single click.</p>
+              </div>
+              <div className="home-featured-cta-actions">
+                <Button to={ROUTES.login}>Log in</Button>
+                <Button to={ROUTES.register} variant="outline">
+                  Create account
+                </Button>
+              </div>
+            </div>
+          ) : featuredLoading ? (
+            <div className="home-featured-loading" role="status">
+              <span className="spinner spinner-dark" aria-hidden="true" />
+              Loading courses…
+            </div>
+          ) : featuredError ? (
+            <div className="card home-featured-cta" role="alert">
+              <div>
+                <h3>Couldn't load featured programs</h3>
+                <p>The catalog is temporarily unavailable.</p>
+              </div>
+              <div className="home-featured-cta-actions">
+                <Button variant="outline" onClick={() => setFeaturedKey((key) => key + 1)}>
+                  Try again
+                </Button>
+              </div>
+            </div>
+          ) : featured.length > 0 ? (
+            <>
+              <div className="grid grid-3">
+                {featured.slice(0, 3).map((course) => (
+                  <CourseCard key={course.id} course={course} />
+                ))}
+              </div>
+              <div className="home-see-all">
+                <Button to={ROUTES.courses} variant="outline">
+                  View all courses
+                </Button>
+              </div>
+            </>
+          ) : (
+            <p className="home-section-note text-center">
+              New programs are on the way — check back soon.
             </p>
-          </div>
-          <div className="grid grid-3">
-            {SAMPLE_COURSES.slice(0, 3).map((course) => (
-              <CourseCard key={course.id} course={course} />
-            ))}
-          </div>
-          <div className="home-see-all">
-            <Button to={ROUTES.courses} variant="outline">
-              View all courses
-            </Button>
-          </div>
+          )}
         </div>
       </section>
 

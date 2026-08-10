@@ -24,15 +24,6 @@ export const ROLES = {
   STUDENT: 'STUDENT',
 };
 
-/** Course difficulty levels. */
-export const SKILL_LEVELS = ['BEGINNER', 'INTERMEDIATE', 'ADVANCED'];
-
-export const SKILL_LEVEL_LABELS = {
-  BEGINNER: 'Beginner',
-  INTERMEDIATE: 'Intermediate',
-  ADVANCED: 'Advanced',
-};
-
 /** Enrollment lifecycle statuses (mirrors backend EnrollmentStatus enum). */
 export const ENROLLMENT_STATUSES = ['PENDING', 'ACTIVE', 'COMPLETED', 'CANCELLED'];
 
@@ -47,8 +38,6 @@ export default {
   ROUTES,
   coursePath,
   ROLES,
-  SKILL_LEVELS,
-  SKILL_LEVEL_LABELS,
   ENROLLMENT_STATUSES,
   ENROLLMENT_STATUS_LABELS,
 };

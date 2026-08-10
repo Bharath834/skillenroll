@@ -41,12 +41,14 @@ const { AuthProvider } = await server.ssrLoadModule('/src/context/AuthContext.js
 const cases = [
   { entry: '/', pattern: '/', file: '/src/pages/Home.jsx', expect: 'Learn new skills' },
   { entry: '/courses', pattern: '/courses', file: '/src/pages/Courses.jsx', expect: 'Course Catalog' },
-  { entry: '/courses/1', pattern: '/courses/:id', file: '/src/pages/CourseDetails.jsx', expect: 'Introduction to Web Development' },
-  { entry: '/courses/999', pattern: '/courses/:id', file: '/src/pages/CourseDetails.jsx', expect: 'Course not found' },
+  // Course pages are gated behind the backend's auth requirement; the
+  // anonymous SSR render shows the sign-in prompt (fetching is skipped).
+  { entry: '/courses/1', pattern: '/courses/:id', file: '/src/pages/CourseDetails.jsx', expect: 'Sign in to view course details' },
+  { entry: '/courses/999', pattern: '/courses/:id', file: '/src/pages/CourseDetails.jsx', expect: 'Sign in to view course details' },
   { entry: '/login', pattern: '/login', file: '/src/pages/Login.jsx', expect: 'Welcome back' },
   { entry: '/register', pattern: '/register', file: '/src/pages/Register.jsx', expect: 'Create your account' },
   { entry: '/my-enrollments', pattern: '/my-enrollments', file: '/src/pages/MyEnrollments.jsx', expect: 'No enrollments yet' },
-  { entry: '/progress', pattern: '/progress', file: '/src/pages/Progress.jsx', expect: 'progress dashboard' },
+  { entry: '/progress', pattern: '/progress', file: '/src/pages/Progress.jsx', expect: 'No progress yet' },
   { entry: '/nope', pattern: '*', file: '/src/pages/NotFound.jsx', expect: 'Page not found' },
 ];
 

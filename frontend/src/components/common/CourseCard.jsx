@@ -1,28 +1,20 @@
 import { Link } from 'react-router-dom';
 import Badge from './Badge.jsx';
-import { coursePath, SKILL_LEVEL_LABELS } from '../../utils/constants.js';
-import { formatDuration, formatPrice, pluralize } from '../../utils/formatters.js';
+import { coursePath } from '../../utils/constants.js';
+import { formatDuration, formatPrice } from '../../utils/formatters.js';
 import './CourseCard.css';
-
-const LEVEL_VARIANT = {
-  BEGINNER: 'success',
-  INTERMEDIATE: 'warning',
-  ADVANCED: 'danger',
-};
 
 /**
  * Card summarizing a course. Used in the Home featured section and the
- * Courses catalog grid. Currently renders sample data; the shape mirrors the
- * backend CourseResponse DTO so it can be swapped to live API data later.
+ * Courses catalog grid. Renders only fields present in the backend
+ * CourseResponse DTO (id, title, description, category, price, duration,
+ * instructorName) — no invented fields.
  */
 export default function CourseCard({ course }) {
-  const levelLabel = SKILL_LEVEL_LABELS[course.skillLevel] || course.skillLevel;
-
   return (
     <article className="course-card card card-hover">
       <div className="course-card-top">
         <Badge variant="primary">{course.category}</Badge>
-        <Badge variant={LEVEL_VARIANT[course.skillLevel] || 'neutral'}>{levelLabel}</Badge>
       </div>
 
       <h3 className="course-card-title">
@@ -45,15 +37,6 @@ export default function CourseCard({ course }) {
           </svg>
           {formatDuration(course.duration)}
         </span>
-        {course.lessonsCount ? (
-          <span className="course-card-meta-item" title="Lessons">
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M4 5h16v14H4z" />
-              <path d="M8 9h8M8 13h5" />
-            </svg>
-            {pluralize(course.lessonsCount, 'lesson')}
-          </span>
-        ) : null}
       </div>
 
       <div className="course-card-footer">
