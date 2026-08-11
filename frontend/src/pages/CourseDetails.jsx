@@ -7,6 +7,7 @@ import EmptyState from '../components/common/EmptyState.jsx';
 import useDocumentTitle from '../hooks/useDocumentTitle.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import { courseApi } from '../services/courseService.js';
+import { paymentApi, loadRazorpayCheckout } from '../services/paymentService.js';
 import { ROUTES } from '../utils/constants.js';
 import { formatDuration, formatMinutes, formatPrice, pluralize } from '../utils/formatters.js';
 import { getApiErrorMessage } from '../utils/errors.js';
@@ -34,6 +35,11 @@ const ERROR_ICON = (
   </svg>
 );
 
+// sessionStorage key (per course) for a captured-but-unconfirmed payment.
+// Survives reloads so the learner can confirm the SAME payment (no double
+// charge) even after navigating away or refreshing the page.
+const PENDING_PAYMENT_STORAGE_KEY = (courseId) => `skillenroll:pending-payment:${courseId}`;
+
 /**
  * Course details. Fetches the real course (GET /api/courses/{id}) and its
  * curriculum (GET /api/lessons/course/{courseId}) and lets an authenticated
@@ -56,8 +62,18 @@ export default function CourseDetails() {
   const [lessonsError, setLessonsError] = useState(null);
 
   const [enrolled, setEnrolled] = useState(false);
-  const [enrollState, setEnrollState] = useState('idle'); // idle | submitting | success | error
+  // Enrollment lifecycle status when a record exists: 'ACTIVE' | 'PENDING' | null.
+  // Paid courses enroll as PENDING and are activated after payment verification.
+  const [enrollmentStatus, setEnrollmentStatus] = useState(null);
+  const [enrollState, setEnrollState] = useState('idle'); // idle | submitting | checkout | verifying | success | error
   const [enrollMessage, setEnrollMessage] = useState('');
+  // Set when a payment may have been captured but verification failed — the
+  // learner can then re-confirm without creating a new order (no double charge).
+  const [pendingOrderId, setPendingOrderId] = useState(null);
+  // Razorpay payment id + signature captured by the checkout handler, kept so
+  // the SAME /verify payload can be re-sent after a reload instead of paying
+  // again. Null when only the order id is known (server-side re-verify).
+  const [pendingSignature, setPendingSignature] = useState(null);
 
   useDocumentTitle(course ? course.title : courseError ? 'Course not available' : 'Course');
 
@@ -72,8 +88,11 @@ export default function CourseDetails() {
       setLessonsLoading(false);
       setLessonsError(null);
       setEnrolled(false);
+      setEnrollmentStatus(null);
       setEnrollState('idle');
       setEnrollMessage('');
+      setPendingOrderId(null);
+      setPendingSignature(null);
       return undefined;
     }
 
@@ -84,8 +103,11 @@ export default function CourseDetails() {
     setLessons(null);
     setLessonsError(null);
     setEnrolled(false);
+    setEnrollmentStatus(null);
     setEnrollState('idle');
     setEnrollMessage('');
+    setPendingOrderId(null);
+    setPendingSignature(null);
 
     courseApi
       .getCourseById(id)
@@ -142,7 +164,11 @@ export default function CourseDetails() {
       .getEnrollmentsForUserAndCourse(user.id, course.id)
       .then((page) => {
         if (cancelled) return;
-        if (Array.isArray(page?.content) && page.content.length > 0) setEnrolled(true);
+        const enrollment = Array.isArray(page?.content) && page.content.length > 0 ? page.content[0] : null;
+        if (enrollment) {
+          setEnrolled(true);
+          setEnrollmentStatus(enrollment.status ?? null);
+        }
       })
       .catch(() => {
         // Ignored — the enroll action handles the already-enrolled case.
@@ -153,25 +179,243 @@ export default function CourseDetails() {
     };
   }, [course, user]);
 
+  // Restore a captured-but-unconfirmed payment for this course across reloads
+  // and navigation, so the learner can confirm it WITHOUT paying again.
+  useEffect(() => {
+    if (!course || !isAuthenticated) return undefined;
+
+    let raw = null;
+    try {
+      raw = sessionStorage.getItem(PENDING_PAYMENT_STORAGE_KEY(course.id));
+    } catch {
+      return undefined;
+    }
+    if (!raw) return undefined;
+    try {
+      const saved = JSON.parse(raw);
+      if (saved?.orderId) {
+        setPendingOrderId(saved.orderId);
+        setPendingSignature(
+          saved.paymentId && saved.signature
+            ? { paymentId: saved.paymentId, signature: saved.signature }
+            : null
+        );
+        setEnrollState('error');
+        setEnrollMessage(
+          'Your payment may have been captured — confirm it to finish enrolling without paying again.'
+        );
+      }
+    } catch {
+      // Malformed storage — ignore.
+    }
+    return undefined;
+  }, [course, isAuthenticated]);
+
+  // A paid course needs a completed Razorpay payment before access is active.
+  const isPaidCourse = Number(course?.price) > 0;
+  // Free courses treat any enrollment as active; paid ones only when ACTIVE.
+  const enrolledActive = enrolled && (enrollmentStatus === 'ACTIVE' || !isPaidCourse);
+  // Paid course, enrolled but not yet paid → offer to (re)open the checkout.
+  const needsPayment = enrolled && enrollmentStatus === 'PENDING' && isPaidCourse;
+  const enrollBusy =
+    enrollState === 'submitting' || enrollState === 'checkout' || enrollState === 'verifying';
+
+  /** Persists a captured-but-unconfirmed payment so it survives reloads. */
+  const savePendingPayment = (orderId, paymentId, signature) => {
+    try {
+      sessionStorage.setItem(
+        PENDING_PAYMENT_STORAGE_KEY(course.id),
+        JSON.stringify({ orderId, paymentId, signature })
+      );
+    } catch {
+      // Storage unavailable — the in-memory state still covers this session.
+    }
+  };
+
+  /** Clears the in-memory + persisted pending payment reference. */
+  const clearPendingPayment = () => {
+    setPendingOrderId(null);
+    setPendingSignature(null);
+    try {
+      sessionStorage.removeItem(PENDING_PAYMENT_STORAGE_KEY(course.id));
+    } catch {
+      // Ignore.
+    }
+  };
+
   const handleEnroll = async () => {
-    if (!user || !course || enrollState === 'submitting') return;
+    if (!user || !course || enrollBusy) return;
 
     setEnrollState('submitting');
     setEnrollMessage('');
     try {
-      await courseApi.enroll({ userId: user.id, courseId: course.id });
-      setEnrolled(true);
-      setEnrollState('success');
-      setEnrollMessage('You are enrolled. Start learning whenever you are ready.');
-    } catch (err) {
-      if (err.status === 409) {
+      // 1. Make sure a PENDING enrollment exists (409 = already enrolled is fine).
+      if (!enrolled) {
+        try {
+          await courseApi.enroll({ userId: user.id, courseId: course.id });
+        } catch (err) {
+          if (err.status !== 409) throw err;
+        }
         setEnrolled(true);
+        setEnrollmentStatus((status) => status || 'PENDING');
+      }
+
+      // 2. Free course → the enrollment is all that is needed.
+      if (!isPaidCourse) {
         setEnrollState('success');
-        setEnrollMessage('You are already enrolled in this course.');
-      } else {
+        setEnrollMessage('You are enrolled. Start learning whenever you are ready.');
+        return;
+      }
+
+      // 3. Paid course → Razorpay checkout, then server-side verification.
+      await startCheckout();
+    } catch (err) {
+      setEnrollState('error');
+      setEnrollMessage(
+        getApiErrorMessage(err, 'We could not complete the enrollment. Please try again.')
+      );
+    }
+  };
+
+  /**
+   * Opens the Razorpay checkout for the current course:
+   * 1. POST /api/payment/create-order → order (amount derived server-side).
+   * 2. Load Checkout.js (cached after the first load).
+   * 3. Open the modal with order_id + key; on success POST /api/payment/verify
+   *    with the Razorpay ids + signature to activate the enrollment.
+   */
+  const startCheckout = async () => {
+    // 1. Create the Razorpay order (amount is never taken from the client).
+    const order = await paymentApi.createOrder(course.id);
+
+    // 2. Load the checkout script (no-op after the first successful load).
+    const Razorpay = await loadRazorpayCheckout();
+
+    // 3. Open the payment modal.
+    const options = {
+      key: order.keyId,
+      amount: order.amount, // paise
+      currency: order.currency || 'INR',
+      name: 'SkillEnroll',
+      description: course.title,
+      order_id: order.orderId,
+      prefill: {
+        name: [user.firstName, user.lastName].filter(Boolean).join(' ') || 'SkillEnroll learner',
+        email: user.email || '',
+        contact: user.phoneNumber || '',
+      },
+      theme: { color: '#4f46e5' },
+      modal: {
+        ondismiss: () =>
+          setEnrollState((state) => (state === 'checkout' ? 'idle' : state)),
+      },
+      handler: async (response) => {
+        setEnrollState('verifying');
+        try {
+          const verification = await paymentApi.verifyPayment({
+            orderId: response.razorpay_order_id,
+            paymentId: response.razorpay_payment_id,
+            signature: response.razorpay_signature,
+            courseId: course.id,
+          });
+          // Trust the backend: it only reports ACTIVE when the enrollment was
+          // actually activated (PENDING -> ACTIVE).
+          const activated = verification.enrollmentStatus === 'ACTIVE';
+          setEnrollmentStatus(verification.enrollmentStatus ?? null);
+          if (activated) clearPendingPayment();
+          setEnrollState(activated ? 'success' : 'error');
+          setEnrollMessage(
+            activated
+              ? 'Payment successful — you are enrolled. Start learning whenever you are ready.'
+              : 'Payment successful, but your enrollment could not be activated yet. Please try again shortly.'
+          );
+        } catch (verifyError) {
+          // The payment may have been captured even if confirmation failed
+          // (e.g. a transient error). Keep the order id AND the Razorpay
+          // signature so the learner can re-confirm the SAME payment — never
+          // auto-create a new order.
+          const unconfirmedOrderId = response.razorpay_order_id || order.orderId;
+          setPendingOrderId(unconfirmedOrderId);
+          setPendingSignature({
+            paymentId: response.razorpay_payment_id,
+            signature: response.razorpay_signature,
+          });
+          savePendingPayment(
+            unconfirmedOrderId,
+            response.razorpay_payment_id,
+            response.razorpay_signature
+          );
+          setEnrollState('error');
+          setEnrollMessage(
+            getApiErrorMessage(
+              verifyError,
+              'Payment received, but we could not confirm it yet. Please try again shortly.'
+            )
+          );
+        }
+      },
+    };
+
+    const razorpay = new Razorpay(options);
+    razorpay.on('payment.failed', () => {
+      // The payment definitively failed — no confirmation retry is offered.
+      clearPendingPayment();
+      setEnrollState('error');
+      setEnrollMessage('Payment failed. You can try again whenever you are ready.');
+    });
+    razorpay.open();
+    setEnrollState('checkout');
+  };
+
+  /**
+   * Re-confirms a previously captured payment. When the Razorpay signature was
+   * captured, the SAME /verify payload is re-sent (idempotent, no new order);
+   * otherwise the server re-verifies from its ledger via /re-verify. A 4xx
+   * means no verified payment is on record — fall back to a fresh checkout.
+   */
+  const handleConfirmPayment = async () => {
+    if (!user || !course || enrollBusy || !pendingOrderId) return;
+
+    setEnrollState('verifying');
+    setEnrollMessage('');
+    try {
+      const verification = pendingSignature
+        ? await paymentApi.verifyPayment({
+            orderId: pendingOrderId,
+            paymentId: pendingSignature.paymentId,
+            signature: pendingSignature.signature,
+            courseId: course.id,
+          })
+        : await paymentApi.reVerifyPayment({
+            orderId: pendingOrderId,
+            courseId: course.id,
+          });
+      const activated = verification.enrollmentStatus === 'ACTIVE';
+      setEnrollmentStatus(verification.enrollmentStatus ?? null);
+      if (activated) clearPendingPayment();
+      setEnrollState(activated ? 'success' : 'error');
+      setEnrollMessage(
+        activated
+          ? 'Payment confirmed — you are enrolled. Start learning whenever you are ready.'
+          : 'Payment confirmed, but your enrollment could not be activated yet. Please try again shortly.'
+      );
+    } catch (confirmError) {
+      const status = confirmError.status;
+      if (status && status >= 400 && status < 500) {
+        // Deterministic failure (e.g. 409 no verified payment, 400 order not
+        // found or signature invalid): there is nothing more to confirm — let
+        // the learner pay fresh.
+        clearPendingPayment();
         setEnrollState('error');
         setEnrollMessage(
-          getApiErrorMessage(err, 'We could not complete the enrollment. Please try again.')
+          confirmError.message || 'No verified payment was found. Please complete a new payment.'
+        );
+      } else {
+        // Transient (5xx / network): keep the order id so they can retry the
+        // confirmation without paying again.
+        setEnrollState('error');
+        setEnrollMessage(
+          getApiErrorMessage(confirmError, 'We could not confirm the payment. Please try again shortly.')
         );
       }
     }
@@ -351,19 +595,31 @@ export default function CourseDetails() {
             <Button
               block
               size="lg"
-              onClick={handleEnroll}
-              disabled={enrolled || enrollState === 'submitting'}
+              onClick={pendingOrderId ? handleConfirmPayment : handleEnroll}
+              disabled={enrolledActive || enrollBusy}
             >
-              {enrolled
+              {enrolledActive
                 ? 'Enrolled'
                 : enrollState === 'submitting'
                   ? 'Enrolling…'
-                  : 'Enroll now'}
+                  : enrollState === 'checkout'
+                    ? 'Payment…'
+                    : enrollState === 'verifying'
+                      ? 'Confirming…'
+                      : pendingOrderId
+                        ? 'Confirm payment'
+                        : needsPayment
+                          ? 'Complete payment'
+                          : 'Enroll now'}
             </Button>
             <p className="course-detail-card-note">
-              {enrolled
+              {enrolledActive
                 ? 'You are enrolled in this course.'
-                : 'Enroll in one click and start learning immediately.'}
+                : pendingOrderId
+                  ? 'Your payment may have been captured — confirm it to finish enrolling without paying again.'
+                  : needsPayment
+                    ? 'Complete your payment to activate access.'
+                    : 'Enroll in one click and start learning immediately.'}
             </p>
 
             {enrollState === 'success' ? (

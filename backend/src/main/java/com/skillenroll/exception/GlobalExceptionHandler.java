@@ -1,5 +1,6 @@
 package com.skillenroll.exception;
 
+import com.razorpay.RazorpayException;
 import com.skillenroll.util.ApiResponse;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.ConstraintViolationException;
@@ -73,6 +74,14 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponse<Void>> handleIllegalArgument(IllegalArgumentException ex) {
         log.warn("Invalid argument: {}", ex.getMessage());
         return build(HttpStatus.BAD_REQUEST, ex.getMessage());
+    }
+
+    @ExceptionHandler(RazorpayException.class)
+    public ResponseEntity<ApiResponse<Void>> handleRazorpay(RazorpayException ex) {
+        // Upstream payment-gateway failure. The internal details are logged but
+        // never surfaced to the client, and no Razorpay credentials are exposed.
+        log.error("Razorpay API call failed", ex);
+        return build(HttpStatus.BAD_GATEWAY, "Payment gateway error. Please try again later.");
     }
 
     @ExceptionHandler(BadCredentialsException.class)

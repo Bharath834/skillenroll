@@ -30,3 +30,9 @@ app:
     secret: '${JWT_SECRET:Naxi60zfyJogjfLK/iRaMX0qPP0qhOUuU3xHnUpjoqGeVxPsAsWadrefaVEFYfuC}'
     expiration-ms: '${JWT_EXPIRATION_MS:86400000}'
     refresh-expiration-ms: '${JWT_REFRESH_EXPIRATION_MS:604800000}'
+
+# Razorpay client bean only needs non-blank values in tests; Razorpay is never
+# called from the test suite (placeholder values, not real credentials).
+razorpay:
+  key-id: test-key-id
+  key-secret: test-key-secret

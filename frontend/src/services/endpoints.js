@@ -47,6 +47,12 @@ export const PROGRESS_ENDPOINTS = {
   byUserAndCourse: (userId, courseId) => `/progress/user/${userId}/course/${courseId}`,
 };
 
+export const PAYMENT_ENDPOINTS = {
+  createOrder: '/payment/create-order',
+  verify: '/payment/verify',
+  reVerify: '/payment/re-verify',
+};
+
 export default {
   AUTH_ENDPOINTS,
   USER_ENDPOINTS,
@@ -54,4 +60,5 @@ export default {
   ENROLLMENT_ENDPOINTS,
   LESSON_ENDPOINTS,
   PROGRESS_ENDPOINTS,
+  PAYMENT_ENDPOINTS,
 };

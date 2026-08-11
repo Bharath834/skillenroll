@@ -43,3 +43,10 @@ app:
     expiration-ms: '${JWT_EXPIRATION_MS:86400000}'
     # Refresh token lifetime (default 7 days).
     refresh-expiration-ms: '${JWT_REFRESH_EXPIRATION_MS:604800000}'
+
+# --- Razorpay configuration (Day 8 / T07) ---
+# TEST credentials are injected from the environment; never commit real secrets.
+# The application fails fast at startup when these are missing (RazorpayConfig).
+razorpay:
+  key-id: '${RAZORPAY_KEY_ID:}'
+  key-secret: '${RAZORPAY_KEY_SECRET:}'
